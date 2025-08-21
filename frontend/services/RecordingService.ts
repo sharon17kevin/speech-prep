@@ -2,7 +2,8 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { RecordingItem } from '@/types/Recording';
+import { RecordingItem, AudioAnalysisResponse } from '@/types/Recording';
+import { analyzeAudio, AudioFile } from './audio-services';
 
 export class RecordingService {
   private recordingsDirectory: string;
@@ -45,25 +46,90 @@ export class RecordingService {
     }
   }
 
-  async saveRecording(uri: string, duration: number): Promise<RecordingItem> {
+  // async saveRecording(uri: string, duration: number): Promise<RecordingItem> {
+  //   if (Platform.OS === 'web') {
+  //     throw new Error('Saving recordings is not supported on web platform');
+  //   }
+    
+  //   try {
+  //     const timestamp = new Date().toISOString();
+  //     const fileName = `recording_${Date.now()}.m4a`;
+  //     const newUri = this.recordingsDirectory + fileName;
+      
+  //     // Move the recording to our recordings directory
+  //     await FileSystem.moveAsync({
+  //       from: uri,
+  //       to: newUri,
+  //     });
+
+  //     // Get file info
+  //     const fileInfo = await FileSystem.getInfoAsync(newUri);
+      
+  //     const recordingItem: RecordingItem = {
+  //       id: Date.now().toString(),
+  //       name: `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+  //       uri: newUri,
+  //       duration,
+  //       createdAt: timestamp,
+  //       size: fileInfo.size || 0,
+  //     };
+
+  //     // Save to AsyncStorage
+  //     const recordings = await this.getRecordings();
+  //     recordings.unshift(recordingItem);
+  //     await AsyncStorage.setItem('recordings', JSON.stringify(recordings));
+
+  //     return recordingItem;
+  //   } catch (error) {
+  //     console.error('Failed to save recording', error);
+  //     throw error;
+  //   }
+  // }
+
+  async saveRecording(recording: Audio.Recording, duration: number): Promise<RecordingItem> {
     if (Platform.OS === 'web') {
       throw new Error('Saving recordings is not supported on web platform');
     }
     
     try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      if (!uri) {
+        throw new Error('Recording URI not found');
+      }
+
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (!fileInfo.exists) {
+        throw new Error('Audio file not found');
+      }
+
       const timestamp = new Date().toISOString();
       const fileName = `recording_${Date.now()}.m4a`;
       const newUri = this.recordingsDirectory + fileName;
-      
+
       // Move the recording to our recordings directory
       await FileSystem.moveAsync({
         from: uri,
         to: newUri,
       });
 
-      // Get file info
-      const fileInfo = await FileSystem.getInfoAsync(newUri);
-      
+      // Prepare AudioFile for analysis
+      const audioFile: AudioFile = {
+        uri: newUri,
+        type: Platform.OS === 'ios' ? 'audio/m4a' : 'audio/mp3',
+        name: fileName,
+      };
+
+      // Analyze audio
+      let analysis: AudioAnalysisResponse | undefined;
+      try {
+        analysis = await analyzeAudio(audioFile);
+      } catch (error) {
+        console.error('Failed to analyze audio:', error);
+        // Continue saving even if analysis fails
+      }
+
+      // Create recording item
       const recordingItem: RecordingItem = {
         id: Date.now().toString(),
         name: `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
@@ -71,6 +137,7 @@ export class RecordingService {
         duration,
         createdAt: timestamp,
         size: fileInfo.size || 0,
+        analysis,
       };
 
       // Save to AsyncStorage
