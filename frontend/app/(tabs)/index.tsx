@@ -114,13 +114,11 @@ export default function RecordScreen() {
   const stopRecording = async () => {
     if (recording) {
       try {
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
+        // await recording.stopAndUnloadAsync();
+        // const uri = recording.getURI();
         
-        if (uri) {
-          await recordingService.saveRecording(uri, duration);
-          Alert.alert('Success', 'Recording saved successfully!');
-        }
+        await recordingService.saveRecording(recording, duration);
+        Alert.alert('Success', 'Recording saved successfully!');
         
         setRecording(null);
         setIsRecording(false);
